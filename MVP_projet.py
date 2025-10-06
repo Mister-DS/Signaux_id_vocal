@@ -8,23 +8,28 @@ import os
 
 class VoiceAuthApp:
     def __init__(self):
-        self.fs = 16000  # Fréquence d'échantillonnage
+        #Var enregi 
+        self.fs = 16000
         self.audio_data = []
         self.stream = None 
-        self.is_recording = False  # État de l'enregistrement
+        self.is_recording = False
+        self.audio_array = None
         
-        if not os.path.exists("enregistrements"):
-            os.makedirs("enregistrements")
+        dossier_script = os.path.dirname(os.path.abspath(__file__))
+        self.dossier_enregistrements = os.path.join(dossier_script, "enregistrements")
         
-
+        if not os.path.exists(self.dossier_enregistrements):
+            os.makedirs(self.dossier_enregistrements)
+        
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("dark-blue")
         
         self.app = ctk.CTk()
         self.app.title("Reconnaissance vocale MVP")
-        self.app.geometry("600x500")
+        self.app.geometry("600x700")
         
         
+        # Label titre
         self.label = ctk.CTkLabel(
             self.app, 
             text="Système d'authentification vocale", 
@@ -67,6 +72,20 @@ class VoiceAuthApp:
         )
         self.entry_nom.pack(pady=10)
         
+        # Bouton Valider
+        self.btn_valider = ctk.CTkButton(
+            self.app,
+            text="Valider et enregistrer",
+            command=self.valider_enregistrement,
+            font=("Arial", 14),
+            height=50,
+            width=250,
+            fg_color="blue",
+            state="disabled"
+        )
+        self.btn_valider.pack(pady=10)
+        
+        # Label de status
         self.label_status = ctk.CTkLabel(
             self.app,
             text="Prêt à enregistrer",
@@ -75,6 +94,48 @@ class VoiceAuthApp:
         )
         self.label_status.pack(pady=10)
         
+        
+        self.separator = ctk.CTkLabel(
+            self.app,
+            text="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            font=("Arial", 10),
+            text_color="gray"
+        )
+        self.separator.pack(pady=10)
+        
+        # Label pour la section visualisation
+        self.label_visualisation = ctk.CTkLabel(
+            self.app,
+            text="Visualisation des enregistrements",
+            font=("Arial", 14, "bold")
+        )
+        self.label_visualisation.pack(pady=10)
+        
+        # Liste déroulante des fichiers
+        self.dropdown = ctk.CTkComboBox(
+            self.app,
+            values=self.charger_liste_fichiers(),
+            font=("Arial", 12),
+            width=300,
+            height=35,
+            state="readonly"
+        )
+        self.dropdown.pack(pady=10)
+        self.dropdown.set("Sélectionnez un fichier")
+        
+        # Bouton pour voir le signal
+        self.btn_voir_signal = ctk.CTkButton(
+            self.app,
+            text="Voir le signal",
+            command=self.afficher_signal,
+            font=("Arial", 14),
+            height=45,
+            width=250,
+            fg_color="purple"
+        )
+        self.btn_voir_signal.pack(pady=10)
+        
+        # Bouton Quitter
         self.btn_quit = ctk.CTkButton(
             self.app, 
             text="Quitter", 
@@ -86,11 +147,30 @@ class VoiceAuthApp:
         )
         self.btn_quit.pack(pady=20)
     
+    def charger_liste_fichiers(self):
+        """
+        Charge la liste des fichiers .wav disponibles
+        Retourne une liste de noms sans l'extension .wav
+        """
+        try:
+            fichiers = os.listdir(self.dossier_enregistrements)
+            fichiers_wav = [f.replace(".wav", "") for f in fichiers if f.endswith(".wav")]
+            return fichiers_wav if fichiers_wav else ["Aucun fichier"]
+        except Exception as e:
+            print(f"Erreur lors du chargement des fichiers: {e}")
+            return ["Erreur de chargement"]
+    
+    def mettre_a_jour_liste(self):
+        """
+        Met à jour la liste déroulante avec les fichiers actuels
+        """
+        fichiers = self.charger_liste_fichiers()
+        self.dropdown.configure(values=fichiers)
+        if fichiers and fichiers[0] != "Aucun fichier":
+            self.dropdown.set(fichiers[-1])
+    
     def audio_callback(self, indata, frames, time, status):
-        """
-        Fonction appelée automatiquement par sounddevice
-        à chaque fois qu'un morceau audio est capturé
-        """
+        """Fonction appelée automatiquement pour capturer l'audio"""
         if status:
             print(f"Erreur audio: {status}")
         
@@ -100,6 +180,7 @@ class VoiceAuthApp:
         """Démarrer l'enregistrement audio"""
         self.is_recording = True
         self.audio_data = []
+        self.audio_array = None
         
         self.stream = sd.InputStream(
             samplerate=self.fs,
@@ -114,11 +195,13 @@ class VoiceAuthApp:
         )
         self.btn_start.configure(state="disabled")
         self.btn_stop.configure(state="normal")
+        self.btn_valider.configure(state="disabled")
+        self.entry_nom.delete(0, 'end')
         
         print("Enregistrement démarré...")
     
     def stop_recording(self):
-        """Arrêter l'enregistrement et sauvegarder"""
+        """Arrêter l'enregistrement (mais ne sauvegarde PAS encore)"""
         if not self.is_recording:
             return
         
@@ -127,6 +210,27 @@ class VoiceAuthApp:
         self.stream.stop()
         self.stream.close()
         
+        # Convertir en array numpy et stocker
+        self.audio_array = np.concatenate(self.audio_data, axis=0)
+        
+        self.label_status.configure(
+            text="Enregistrement arrêté. Entrez votre nom et validez.",
+            text_color="orange"
+        )
+        self.btn_stop.configure(state="disabled")
+        self.btn_valider.configure(state="normal")
+        
+        print("Enregistrement arrêté. Validation...")
+    
+    def valider_enregistrement(self):
+        """Sauvegarder l'enregistrement avec le nom donné"""
+        if self.audio_array is None:
+            self.label_status.configure(
+                text="Erreur: Pas d'audio à sauvegarder !",
+                text_color="red"
+            )
+            return
+        
         nom = self.entry_nom.get().strip()
         
         if not nom:
@@ -134,33 +238,31 @@ class VoiceAuthApp:
                 text="Erreur: Veuillez entrer un nom !",
                 text_color="red"
             )
-            self.btn_start.configure(state="normal")
-            self.btn_stop.configure(state="disabled")
             return
         
-        audio_array = np.concatenate(self.audio_data, axis=0)
-        
         numero = self.trouver_prochain_numero(nom)
-
-        filename = f"enregistrements/{nom}_{numero}.wav"
         
-        sf.write(filename, audio_array, self.fs)
-
+        filename = os.path.join(self.dossier_enregistrements, f"{nom}_{numero}.wav")
+        
+        sf.write(filename, self.audio_array, self.fs)
+        
         self.label_status.configure(
-            text=f"Enregistré: {filename}",
+            text=f"Enregistré: {nom}_{numero}.wav",
             text_color="green"
         )
         self.btn_start.configure(state="normal")
-        self.btn_stop.configure(state="disabled")
+        self.btn_valider.configure(state="disabled")
         
         print(f"Enregistrement sauvegardé: {filename}")
+        
+        # Met à jour la liste déroulante des fichiers
+        self.mettre_a_jour_liste()
+        
+        self.audio_array = None
     
     def trouver_prochain_numero(self, nom_personne):
-        """
-        Trouve le prochain numéro d'enregistrement pour une personne
-        Ex: si alice_1.wav et alice_2.wav existent, retourne 3
-        """
-        fichiers = os.listdir("enregistrements/")
+        """Trouve le prochain numéro d'enregistrement pour une personne"""
+        fichiers = os.listdir(self.dossier_enregistrements)
         
         fichiers_personne = [
             f for f in fichiers 
@@ -181,6 +283,84 @@ class VoiceAuthApp:
                 continue
         
         return max(numeros) + 1 if numeros else 1
+    
+    def afficher_signal(self):
+        """
+        Affiche la forme d'onde et le spectrogramme du fichier sélectionné
+        dans une fenêtre popup matplotlib
+        """
+        # Récupérer le fichier sélectionné
+        fichier_selectionne = self.dropdown.get()
+        
+        if fichier_selectionne == "Sélectionnez un fichier" or fichier_selectionne == "Aucun fichier":
+            self.label_status.configure(
+                text="Veuillez sélectionner un fichier !",
+                text_color="red"
+            )
+            return
+        
+        chemin_complet = os.path.join(self.dossier_enregistrements, fichier_selectionne + ".wav")
+        
+        if not os.path.exists(chemin_complet):
+            self.label_status.configure(
+                text=f"Fichier introuvable: {fichier_selectionne}.wav",
+                text_color="red"
+            )
+            return
+        
+        try:
+            # Lire le fichier WAV
+            data, samplerate = sf.read(chemin_complet) # Récupère l'array numpy et le taux d'échantillonnage 
+            
+            
+            duree = len(data) / samplerate # Calculer la durée en secondes (48000 échantillons / 16 000 échantillons/seconde = 3 secondes)
+            temps = np.linspace(0, duree, len(data))
+            
+            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8)) # 2 lignes, 1 colonne (ax1 = forme d'onde, ax2 = spectrogramme)
+            fig.suptitle(f"Analyse du signal : {fichier_selectionne}", fontsize=16, fontweight='bold') # Titre principal
+            
+            ax1.plot(temps, data, color='blue', linewidth=0.5) 
+            ax1.set_xlabel('Temps (secondes)', fontsize=12) # Axe des x
+            ax1.set_ylabel('Amplitude', fontsize=12) # Axe des y
+            ax1.set_title('Forme d\'onde temporelle', fontsize=14) 
+            ax1.grid(True, alpha=0.3) 
+            ax1.set_xlim([0, duree]) # Limiter l'axe x à la durée totale
+            
+
+            spectrum, freqs, t, im = ax2.specgram(
+                data, 
+                Fs=samplerate, # Fréquence d'échantillonnage (16000 Hz défini dans les variables)
+                NFFT=1024, # Nombre de points pour la FFT (Transformé de Fourier Rapide) ==> + grand = meilleure résolution en fréquence, mais moins bonne en temps
+                noverlap=512, # Nombre de points de recouvrement entre les segments ==> + grand = meilleure résolution en fréquence, mais moins bonne en temps
+                cmap='viridis' # Couleur du spectrogramme (jaune = haute intensité, bleu foncé = basse intensité)
+            )
+            
+            ax2.set_xlabel('Temps (secondes)', fontsize=12)
+            ax2.set_ylabel('Fréquence (Hz)', fontsize=12)
+            ax2.set_title('Spectrogramme (fréquences au fil du temps)', fontsize=14)
+            ax2.set_ylim([0, 8000])  # Limiter à 8kHz
+            
+            cbar = fig.colorbar(im, ax=ax2)
+            cbar.set_label('Intensité (dB)', fontsize=10)
+            
+            
+            plt.tight_layout() #Ajuste espace entre graphique pour pas de chevauchement
+            
+            plt.show() # Affiche la fenêtre pop-up matplotlib
+            
+            self.label_status.configure(
+                text=f"Signal affiché: {fichier_selectionne}",
+                text_color="green"
+            )
+            
+            print(f"Signal affiché pour: {fichier_selectionne}")
+            
+        except Exception as e: # Gestion des erreurs
+            self.label_status.configure(
+                text=f"Erreur lors de l'affichage: {str(e)}",
+                text_color="red"
+            )
+            print(f"Erreur: {e}")
     
     def run(self):
         """Lancer l'application"""
