@@ -97,7 +97,7 @@ class VoiceAuthApp:
         
         self.separator = ctk.CTkLabel(
             self.app,
-            text="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            text="━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             font=("Arial", 10),
             text_color="gray"
         )
@@ -286,8 +286,7 @@ class VoiceAuthApp:
     
     def afficher_signal(self):
         """
-        Affiche la forme d'onde et le spectrogramme du fichier sélectionné
-        dans une fenêtre popup matplotlib
+        Affiche uniquement la forme d'onde du fichier sélectionné
         """
         # Récupérer le fichier sélectionné
         fichier_selectionne = self.dropdown.get()
@@ -310,43 +309,22 @@ class VoiceAuthApp:
         
         try:
             # Lire le fichier WAV
-            data, samplerate = sf.read(chemin_complet) # Récupère l'array numpy et le taux d'échantillonnage 
+            data, samplerate = sf.read(chemin_complet)
             
-            
-            duree = len(data) / samplerate # Calculer la durée en secondes (48000 échantillons / 16 000 échantillons/seconde = 3 secondes)
+            # Calculer la durée en secondes
+            duree = len(data) / samplerate
             temps = np.linspace(0, duree, len(data))
             
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8)) # 2 lignes, 1 colonne (ax1 = forme d'onde, ax2 = spectrogramme)
-            fig.suptitle(f"Analyse du signal : {fichier_selectionne}", fontsize=16, fontweight='bold') # Titre principal
-            
-            ax1.plot(temps, data, color='blue', linewidth=0.5) 
-            ax1.set_xlabel('Temps (secondes)', fontsize=12) # Axe des x
-            ax1.set_ylabel('Amplitude', fontsize=12) # Axe des y
-            ax1.set_title('Forme d\'onde temporelle', fontsize=14) 
-            ax1.grid(True, alpha=0.3) 
-            ax1.set_xlim([0, duree]) # Limiter l'axe x à la durée totale
-            
-
-            spectrum, freqs, t, im = ax2.specgram(
-                data, 
-                Fs=samplerate, # Fréquence d'échantillonnage (16000 Hz défini dans les variables)
-                NFFT=1024, # Nombre de points pour la FFT (Transformé de Fourier Rapide) ==> + grand = meilleure résolution en fréquence, mais moins bonne en temps
-                noverlap=512, # Nombre de points de recouvrement entre les segments ==> + grand = meilleure résolution en fréquence, mais moins bonne en temps
-                cmap='viridis' # Couleur du spectrogramme (jaune = haute intensité, bleu foncé = basse intensité)
-            )
-            
-            ax2.set_xlabel('Temps (secondes)', fontsize=12)
-            ax2.set_ylabel('Fréquence (Hz)', fontsize=12)
-            ax2.set_title('Spectrogramme (fréquences au fil du temps)', fontsize=14)
-            ax2.set_ylim([0, 8000])  # Limiter à 8kHz
-            
-            cbar = fig.colorbar(im, ax=ax2)
-            cbar.set_label('Intensité (dB)', fontsize=10)
-            
-            
-            plt.tight_layout() #Ajuste espace entre graphique pour pas de chevauchement
-            
-            plt.show() # Affiche la fenêtre pop-up matplotlib
+            # Créer la figure avec un seul graphique
+            plt.figure(figsize=(12, 4))
+            plt.plot(temps, data, color='blue', linewidth=0.8)
+            plt.xlabel('Temps (secondes)', fontsize=12)
+            plt.ylabel('Amplitude', fontsize=12)
+            plt.title(f'Signaux {fichier_selectionne}', fontsize=14)
+            plt.grid(True, alpha=0.3)
+            plt.xlim([0, duree])
+            plt.tight_layout()
+            plt.show()
             
             self.label_status.configure(
                 text=f"Signal affiché: {fichier_selectionne}",
@@ -355,7 +333,7 @@ class VoiceAuthApp:
             
             print(f"Signal affiché pour: {fichier_selectionne}")
             
-        except Exception as e: # Gestion des erreurs
+        except Exception as e:
             self.label_status.configure(
                 text=f"Erreur lors de l'affichage: {str(e)}",
                 text_color="red"
