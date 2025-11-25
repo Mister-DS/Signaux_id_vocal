@@ -1,0 +1,10 @@
+customtkinter
+sounddevice
+soundfile
+numpy
+matplotlib
+scipy
+librosa
+openai-whisper
+certifi
+fastdtw
