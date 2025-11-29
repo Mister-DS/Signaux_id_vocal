@@ -151,12 +151,15 @@ if __name__ == "__main__":
     romain_files = ["samples/p10/Romain_1.wav", "samples/p10/Romain_2.wav"]
     auth.enroll_user("Romain", romain_files)
 
-    cam_files = ["samples/p08/cam_1.wav", "samples/p08/cam_2.wav"]
-    auth.enroll_user("Cam", cam_files)
+    victor_files = ["samples/p12/Victor_1.wav", "samples/p12/Victor_2.wav"]
+    auth.enroll_user("Victor", victor_files)
+
+    random_files = ["samples/p08/cam_1.wav", "samples/p09/JIM_1.wav"]
+    auth.enroll_user("Random", random_files)
 
     # 2. IDENTIFICATION (Testing)
     # Let's test with a new file from Alice
-    unknown_file = "samples/p08/cam_3.wav"
+    unknown_file = "samples/test/simon_rienavoir.wav"
 
     winner, score = auth.identify_speaker(unknown_file)
 
