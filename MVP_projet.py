@@ -277,43 +277,26 @@ class VoiceAuthApp:
     # --- Fonctions d'enregistrement ---
     
     def charger_liste_fichiers(self):
-        """Charge la liste des fichiers WAV depuis le dossier samples (incluant les sous-dossiers)"""
+        """Charge la liste des fichiers WAV depuis le dossier samples"""
         try:
             fichiers_wav = []
-
-            # Parcourir récursivement le dossier samples
-            for root, dirs, files in os.walk(self.dossier_samples):
-                for fichier in files:
-                    if fichier.endswith(".wav"):
-                        # Enlever l'extension .wav
-                        nom_sans_extension = fichier.replace('.wav', '')
-                        fichiers_wav.append(nom_sans_extension)
+            fichiers = os.listdir(self.dossier_samples)
+            for fichier in fichiers:
+                chemin_complet = os.path.join(self.dossier_samples, fichier)
+                # Vérifier que c'est un fichier (pas un dossier) et qu'il se termine par .wav
+                if os.path.isfile(chemin_complet) and fichier.endswith(".wav"):
+                    # Enlever l'extension .wav
+                    nom_sans_extension = fichier.replace('.wav', '')
+                    fichiers_wav.append(nom_sans_extension)
 
             return sorted(fichiers_wav) if fichiers_wav else ["Aucun fichier"]
         except Exception as e:
             print(f"Erreur lors du chargement des fichiers: {e}")
             return ["Erreur de chargement"]
     
-    def trouver_chemin_fichier(self, nom_fichier_sans_ext):
-        """Trouve le chemin complet d'un fichier .wav dans samples ou ses sous-dossiers"""
-        # Chercher d'abord dans le dossier samples directement
-        chemin_direct = os.path.join(self.dossier_samples, nom_fichier_sans_ext + ".wav")
-        if os.path.exists(chemin_direct):
-            return chemin_direct
-
-        # Sinon, chercher récursivement dans les sous-dossiers
-        for root, dirs, files in os.walk(self.dossier_samples):
-            for fichier in files:
-                if fichier == nom_fichier_sans_ext + ".wav":
-                    return os.path.join(root, fichier)
-
-        return None
-
     def mettre_a_jour_liste(self):
         fichiers = self.charger_liste_fichiers()
         self.dropdown.configure(values=fichiers)
-        self.dropdown_sample1.configure(values=fichiers)
-        self.dropdown_sample2.configure(values=fichiers)
         if fichiers and fichiers[0] != "Aucun fichier":
             self.dropdown.set(fichiers[-1])
     
@@ -396,8 +379,8 @@ class VoiceAuthApp:
             self.label_status.configure(text="Veuillez sélectionner un fichier !", text_color="red")
             return
 
-        chemin_complet = self.trouver_chemin_fichier(fichier_selectionne)
-        if not chemin_complet:
+        chemin_complet = os.path.join(self.dossier_samples, fichier_selectionne + ".wav")
+        if not os.path.exists(chemin_complet):
             self.label_status.configure(text=f"Fichier introuvable: {fichier_selectionne}.wav", text_color="red")
             return
 
@@ -426,8 +409,8 @@ class VoiceAuthApp:
             self.label_status.configure(text="Veuillez sélectionner un fichier !", text_color="red")
             return
 
-        chemin_complet = self.trouver_chemin_fichier(fichier_selectionne)
-        if not chemin_complet:
+        chemin_complet = os.path.join(self.dossier_samples, fichier_selectionne + ".wav")
+        if not os.path.exists(chemin_complet):
             self.label_status.configure(text=f"Fichier introuvable: {fichier_selectionne}.wav", text_color="red")
             return
 
@@ -459,8 +442,8 @@ class VoiceAuthApp:
             self.label_status.configure(text="Veuillez sélectionner un fichier !", text_color="red")
             return
 
-        chemin_complet = self.trouver_chemin_fichier(fichier_selectionne)
-        if not chemin_complet:
+        chemin_complet = os.path.join(self.dossier_samples, fichier_selectionne + ".wav")
+        if not os.path.exists(chemin_complet):
             self.label_status.configure(text=f"Fichier introuvable: {fichier_selectionne}.wav", text_color="red")
             return
 
@@ -497,8 +480,8 @@ class VoiceAuthApp:
             self.label_status.configure(text="Veuillez sélectionner un fichier !", text_color="red")
             return
 
-        chemin_complet = self.trouver_chemin_fichier(fichier_selectionne)
-        if not chemin_complet:
+        chemin_complet = os.path.join(self.dossier_samples, fichier_selectionne + ".wav")
+        if not os.path.exists(chemin_complet):
             self.label_status.configure(text=f"Fichier introuvable: {fichier_selectionne}.wav", text_color="red")
             return
 
@@ -535,14 +518,16 @@ class VoiceAuthApp:
             self.label_status.configure(text="Veuillez sélectionner un fichier !", text_color="red")
             return
 
-        chemin_complet = self.trouver_chemin_fichier(fichier_selectionne)
+        chemin_complet = os.path.normpath(os.path.join(self.dossier_samples, fichier_selectionne + ".wav"))
 
         print(f"DEBUG - Fichier sélectionné: {fichier_selectionne}")
         print(f"DEBUG - Chemin complet: {chemin_complet}")
+        print(f"DEBUG - Fichier existe: {os.path.exists(chemin_complet)}")
+        print(f"DEBUG - Chemin absolu: {os.path.abspath(chemin_complet)}")
 
-        if not chemin_complet:
+        if not os.path.exists(chemin_complet):
             self.label_status.configure(text=f"Fichier introuvable: {fichier_selectionne}.wav", text_color="red")
-            print(f"Fichier non trouvé: {fichier_selectionne}")
+            print(f"Chemin recherché: {chemin_complet}")
             return
 
         try:
@@ -801,10 +786,10 @@ class VoiceAuthApp:
             self.label_status.configure(text="Veuillez sélectionner le Sample 2 !", text_color="red")
             return
 
-        chemin1 = self.trouver_chemin_fichier(sample1)
-        chemin2 = self.trouver_chemin_fichier(sample2)
+        chemin1 = os.path.join(self.dossier_samples, sample1 + ".wav")
+        chemin2 = os.path.join(self.dossier_samples, sample2 + ".wav")
 
-        if not chemin1 or not chemin2:
+        if not os.path.exists(chemin1) or not os.path.exists(chemin2):
             self.label_status.configure(text="Un ou plusieurs fichiers introuvables !", text_color="red")
             return
 
@@ -836,11 +821,11 @@ class VoiceAuthApp:
             resultat += "   RAPPORT D'ANALYSE VOCALE AVANCÉE\n"
             resultat += "═══════════════════════════════════════\n\n"
 
-            resultat += f"Sample 1: {sample1}\n"
-            resultat += f"Sample 2: {sample2}\n\n"
+            resultat += f"📁 Sample 1: {sample1}\n"
+            resultat += f"📁 Sample 2: {sample2}\n\n"
 
             resultat += "--- ANALYSE VOCALE MULTI-MÉTRIQUES ---\n"
-            resultat += f"Score de similarité vocal: {score_final:.2f}%\n\n"
+            resultat += f"🎯 Score de similarité vocal: {score_final:.2f}%\n\n"
 
             resultat += "Métriques détaillées:\n"
             resultat += f"  • DTW (Dynamic Time Warping): {details.get('dtw', 0):.2f}%\n"
