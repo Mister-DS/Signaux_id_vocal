@@ -116,12 +116,12 @@ class SimpleRecorder(ctk.CTk):
         # Sauvegarde
         if self.audio_data:
             # Créer un dossier 'enregistrements' s'il n'existe pas
-            if not os.path.exists("enregistrements"):
-                os.makedirs("enregistrements")
+            if not os.path.exists("samples"):
+                os.makedirs("samples")
                 
             # Nom du fichier avec timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = os.path.join("enregistrements", f"rec_{timestamp}.wav")
+            filename = os.path.join("samples", f"rec_{timestamp}.wav")
             
             # Convertir la liste en array numpy et sauvegarder
             audio_array = np.concatenate(self.audio_data, axis=0)
