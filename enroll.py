@@ -10,38 +10,32 @@ class EnrollmentManager:
         self.dtw = DTWVerifier()
 
     def run_enrollment(self):
-        print("════════════════════════════════════════")
-        print("       PHASE 1: ENRÔLEMENT (Training)   ")
-        print("════════════════════════════════════════")
+        print("[INFO] Entrainement des modèles de reconnaissance vocale sur base des fichiers existants")
 
-        # 1. Train Background Model (Random)
+        # Entrainement de l'utilisateur lambda
         random_path = os.path.join(self.root, "random")
         if os.path.exists(random_path):
             files = glob.glob(os.path.join(random_path, "*")
-                              )  # Catch wav, m4a, etc
+                              )
             self.gmm.enroll("Random", files)
         else:
-            print("ERREUR: Dossier 'random' introuvable !")
+            print("[ERREUR] Dossier 'random' non trouvé")
 
-        # 2. Train Users
+        # Entrainement des utilisateurs standards
         enroll_path = os.path.join(self.root, "enrollment")
         if not os.path.exists(enroll_path):
-            print("ERREUR: Dossier 'enrollment' introuvable !")
+            print("[ERREUR] Dossier 'enrollment' non trouvé")
             return
 
-        # Get list of folders (users) inside enrollment
         users = [d for d in os.listdir(enroll_path) if os.path.isdir(
             os.path.join(enroll_path, d))]
 
         for user in users:
-            print(f"\n--- Traitement de l'utilisateur : {user} ---")
+            print(f"\n[INFO] Enregistrement de l'utilisateur : {user}")
             user_path = os.path.join(enroll_path, user)
             user_files = glob.glob(os.path.join(user_path, "*"))
 
-            # GMM needs training
             self.gmm.enroll(user, user_files)
-
-            # DTW needs template storage
             self.dtw.enroll(user, user_files)
 
-        print("\n>>> Enrôlement terminé. Modèles sauvegardés dans /models.")
+        print("\n[SUCCESS] Entrainement terminé. Modèles sauvegardés dans /models.")

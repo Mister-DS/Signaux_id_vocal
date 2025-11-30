@@ -4,8 +4,8 @@ from enroll import EnrollmentManager
 from validate import ValidationManager
 from live_auth import LiveAuthenticator
 
-GMM_THRESHOLD = 15.0
-DTW_THRESHOLD = 70.0
+GMM_THRESHOLD = 5.0
+DTW_THRESHOLD = 35.0
 
 
 def main():
@@ -21,6 +21,8 @@ def main():
 
     parser_auth = subparsers.add_parser(
         "auth", help="Enregistrer et authentifier un sample en direct")
+    parser_auth.add_argument("--target", type=str, default=None,
+                             help="Forcer la comparaison avec l'utilisateur spécifié")
 
     args = parser.parse_args()
 
@@ -38,7 +40,7 @@ def main():
             gmm_threshold=GMM_THRESHOLD,
             dtw_threshold=DTW_THRESHOLD
         )
-        authenticator.run()
+        authenticator.run(target_user=args.target)
 
 
 if __name__ == "__main__":

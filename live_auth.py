@@ -1,10 +1,13 @@
-import sounddevice as sd
-import soundfile as sf
-import numpy as np
-import tempfile
 import os
 import sys
+import tempfile
+import numpy as np
 from engines import GMMVerifier, DTWVerifier
+from features import extract_features
+from visualize import visualize_analysis
+from recorder import NativeRecorder  # <--- IMPORT THE NEW LIB
+import soundfile as sf
+from colorama import Fore, Style
 
 
 class LiveAuthenticator:
@@ -12,81 +15,130 @@ class LiveAuthenticator:
         self.gmm_thresh = gmm_threshold
         self.dtw_thresh = dtw_threshold
 
-        # Load engines immediately
-        print("   [Init] Chargement des modèles...")
+        print("[INFO] Chargement des modèles...")
         self.gmm = GMMVerifier()
         self.dtw = DTWVerifier()
         self.gmm.load_models()
         self.dtw.load_models()
 
-    def record_audio(self, duration=None, fs=16000):
-        """
-        Records audio until the user presses Enter.
-        Returns the path to the temporary WAV file.
-        """
-        print("\n" + "="*40)
-        print("   🎙️  MODE ENREGISTREMENT DIRECT")
-        print("="*40)
-        input("   >>> Appuyez sur [ENTRÉE] pour commencer l'enregistrement...")
+    def record_audio(self):
+        # 1. Create a temp file path
+        tf = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tf.close()
+        temp_path = tf.name
 
-        print(
-            "   🔴 Enregistrement en cours... (Appuyez sur [ENTRÉE] pour arrêter)")
+        # 2. Record (Audacity Style)
+        try:
+            # We assume NativeRecorder is imported
+            rec = NativeRecorder(rate=44100)
+            rec.record(temp_path)
+            rec.close()
 
-        recording = []
+            print("[INFO] Nettoyage du signal audio...")
 
-        # Callback function to capture audio blocks
-        def callback(indata, frames, time, status):
-            if status:
-                print(status, file=sys.stderr)
-            recording.append(indata.copy())
+            data, fs = sf.read(temp_path)
 
-        # Start the stream
-        # Channels=1 (Mono), Rate=16000 (To match your models)
-        with sd.InputStream(samplerate=fs, channels=1, callback=callback):
-            # This input() blocks the main thread while the stream runs in background
-            input()
+            # A. The Guillotine: Still necessary to remove the hardware pop
+            samples_to_cut = int(0.3 * fs)
 
-        print("   ⏹️  Enregistrement terminé.")
+            if len(data) > samples_to_cut:
+                data = data[samples_to_cut:]
+            else:
+                print(Fore.RED + "[ERROR] Enregistrement trop court.")
+                return None
 
-        # Concatenate all blocks
-        audio_data = np.concatenate(recording, axis=0)
+            # B. SAFE PEAK NORMALIZATION (The Fix)
+            # We removed the click, so now the loudest thing is your voice.
+            # We scale to 0.9 instead of 1.0 to prevent clipping/distortion.
+            max_val = np.max(np.abs(data))
 
-        # Save to a temp file
-        # We use delete=False so we can close it and let the other engines open it
-        temp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        sf.write(temp_file.name, audio_data, fs)
+            if max_val > 0:
+                data = data / max_val * 0.90
 
-        return temp_file.name
+            # C. Overwrite
+            sf.write(temp_path, data, fs, subtype='PCM_16')
 
-    def run(self):
-        # 1. Record
+            return temp_path
+
+        except Exception as e:
+            print(Fore.RED + f"[ERROR] Recording failed: {e}")
+            return None
+
+    def run(self, target_user=None):
+        # 1. RECORD
         temp_wav_path = self.record_audio()
 
-        try:
-            print(f"\n   🔍 Analyse du signal...")
+        if not temp_wav_path or not os.path.exists(temp_wav_path):
+            print("[FAILURE] Pas de fichier audio généré.")
+            return
 
-            # 2. GMM Check
+        try:
+            print("[INFO] Analyse du signal...")
+
+            # 2. GMM VERIFICATION
+            # Note: extract_features handles the 44.1k -> 16k conversion internally
             id_speaker, gmm_score = self.gmm.verify(
                 temp_wav_path, safety_margin=self.gmm_thresh)
 
-            print(f"   1. Identification (GMM): {
-                  id_speaker} (Marge: {gmm_score:.2f})")
+            print(f"[GMM] Identité détectée : {Fore.CYAN}{id_speaker}{
+                  Style.RESET_ALL} (Score: {gmm_score:.2f})")
 
-            if id_speaker in ["Unknown", "Error", "Error (No UBM)"]:
-                print("\n   🚫 ACCÈS REFUSÉ : Identité non reconnue.")
-                return
+            # Logic to handle forced target for debugging
+            user_to_verify = id_speaker
 
-            # 3. DTW Check
-            dtw_dist = self.dtw.verify(id_speaker, temp_wav_path)
-            print(f"   2. Passphrase (DTW): Distance {dtw_dist:.2f}")
+            if target_user:
+                print(f"\n[DEBUG] Mode Forcé activé : Comparaison avec '{
+                      target_user}'")
+                user_to_verify = target_user
+                if id_speaker != target_user:
+                    print(f"[DEBUG] GMM a échoué (pensait que c'était {
+                          id_speaker}), mais on force la suite.")
 
-            # 4. Final Verdict
-            if dtw_dist < self.dtw_thresh:
-                print(f"\n   ✅ ACCÈS AUTORISÉ. Bienvenue, {id_speaker} !")
+            dtw_dist = 0
+            best_template_feats = None
+            best_template_path = None
+
+            # 3. DTW VERIFICATION
+            if user_to_verify not in ["Unknown", "Error", "Error (No UBM)"]:
+
+                dtw_dist, best_template_feats, best_template_path = self.dtw.verify(
+                    user_to_verify, temp_wav_path)
+
+                print(f"[DTW] Distance avec {user_to_verify}: {dtw_dist:.4f}")
+
+                if dtw_dist < self.dtw_thresh:
+                    print(
+                        Fore.GREEN + f"\n[SUCCESS] Bienvenue, {user_to_verify} !")
+                else:
+                    print(Fore.RED + f"\n[FAILURE] Passphrase incorrecte.")
             else:
-                print(f"\n   🔒 ACCÈS REFUSÉ : Bonne voix, mais mauvaise passphrase.")
+                print(
+                    Fore.RED + "[FAILURE] Identité inconnue et aucune cible forcée.")
+
+            # 4. VISUALIZATION
+            print(Style.RESET_ALL + "[INFO] Génération des graphiques...")
+            live_feats = extract_features(temp_wav_path)
+
+            all_gmm_scores = {}
+            if "Random" in self.gmm.models and live_feats is not None:
+                ubm_score = self.gmm.models["Random"].score(live_feats)
+                for name, model in self.gmm.models.items():
+                    if name == "Random":
+                        continue
+                    all_gmm_scores[name] = model.score(live_feats) - ubm_score
+
+            visualize_analysis(
+                live_path=temp_wav_path,
+                template_path=best_template_path,
+                live_feats=live_feats,
+                template_feats=best_template_feats,
+                gmm_scores=all_gmm_scores,
+                gmm_threshold=self.gmm_thresh
+            )
 
         finally:
-            # Clean up: Delete the temp file
             if os.path.exists(temp_wav_path):
-                os.remove(temp_wav_path)
+                try:
+                    os.remove(temp_wav_path)
+                except:
+                    pass
