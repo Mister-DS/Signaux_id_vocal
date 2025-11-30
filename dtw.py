@@ -1,102 +1,147 @@
 import librosa
 import numpy as np
 import os
-from scipy.spatial.distance import euclidean
+import warnings
 from fastdtw import fastdtw
-from sklearn.preprocessing import scale
+from scipy.spatial.distance import euclidean
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
-class TemporalPassphraseMatcher:
+class DTWVoiceAuth:
     def __init__(self):
-        pass
+        self.user_templates = {}
+        self.cache = {}
 
     def extract_dynamic_features(self, file_path):
         """
-        Extracts features specifically for DTW.
-        We need MFCCs + Deltas (velocity) + Delta-Deltas (acceleration)
-        to capture the 'movement' of the voice.
+        Extracts robust MFCC + Deltas with CMS normalization.
         """
+        # Simple caching to avoid re-reading the same enrollment files
+        if file_path in self.cache:
+            return self.cache[file_path]
+
         try:
+            if not os.path.exists(file_path):
+                return None
+
             y, sr = librosa.load(file_path, sr=16000)
-            # CRITICAL: Trim silence. DTW hates silence at start/end.
             y, _ = librosa.effects.trim(y, top_db=20)
 
-            # 1. MFCCs (The spectral shape)
+            if len(y) < 1024:
+                return None
+
+            # 1. MFCC
             mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
 
-            # 2. Delta (The speed of change)
-            delta = librosa.feature.delta(mfcc)
+            # 2. CMS (Normalize)
+            mfcc = mfcc - np.mean(mfcc, axis=1, keepdims=True)
 
-            # 3. Delta-Delta (The acceleration)
+            # 3. Deltas
+            delta = librosa.feature.delta(mfcc)
             delta2 = librosa.feature.delta(mfcc, order=2)
 
-            # Stack them: Shape = (39, Time_Steps)
-            features = np.vstack([mfcc, delta, delta2])
+            features = np.vstack([mfcc, delta, delta2]).T
 
-            # Transpose to (Time_Steps, 39) for DTW
-            # Normalize (Scale) so volume differences don't break it
-            return scale(features.T, axis=0)
+            # Store in cache
+            self.cache[file_path] = features
+            return features
 
         except Exception as e:
-            print(f"Error processing {file_path}: {e}")
+            print(f"Error extracting {file_path}: {e}")
             return None
 
-    def compare_phrases(self, reference_file, test_file):
+    def enroll_user(self, name, file_paths):
         """
-        Calculates the DTW distance between two recordings.
-        Lower Distance = Better Match.
+        Registers a list of valid reference files for a user.
         """
-        ref_feat = self.extract_dynamic_features(reference_file)
+        print(f"--- Enrolling Templates for: {name} ---")
+        valid_files = []
+        for f in file_paths:
+            if os.path.exists(f):
+                # Pre-calculate features now to save time later
+                if self.extract_dynamic_features(f) is not None:
+                    valid_files.append(f)
+            else:
+                print(f"  Warning: File not found {f}")
+
+        self.user_templates[name] = valid_files
+        print(f"  {len(valid_files)} templates stored.")
+
+    def verify_passphrase(self, claimed_name, test_file):
+        """
+        Compares test_file against ALL enrolled templates for this user.
+        Returns the BEST (Lowest) distance found.
+        """
+        if claimed_name not in self.user_templates:
+            return float('inf'), "User not enrolled"
+
         test_feat = self.extract_dynamic_features(test_file)
+        if test_feat is None:
+            return float('inf'), "Bad Audio"
 
-        if ref_feat is None or test_feat is None:
-            return float('inf')
+        # Compare against every template in the user's gallery
+        best_distance = float('inf')
+        best_template = None
 
-        # Run Dynamic Time Warping
-        # dist is the 'cost' to align the two signals
-        distance, path = fastdtw(ref_feat, test_feat, dist=euclidean)
+        templates = self.user_templates[claimed_name]
 
-        # Normalize distance by length of the path
-        # Otherwise, long passwords naturally have higher costs than short ones
-        normalized_distance = distance / len(path)
+        for ref_file in templates:
+            ref_feat = self.extract_dynamic_features(ref_file)
 
-        return normalized_distance
+            # Run DTW
+            dist, path = fastdtw(ref_feat, test_feat, dist=euclidean)
+            normalized_dist = dist / len(path)
 
-# --- INTEGRATING WITH YOUR AUTH SYSTEM ---
+            # Keep the lowest score (Best Match)
+            if normalized_dist < best_distance:
+                best_distance = normalized_dist
+                best_template = os.path.basename(ref_file)
+
+        return best_distance, best_template
 
 
 if __name__ == "__main__":
-    # Assume we already have the GMM system from before for the "Voice Check"
-    # match_phrase = TemporalPassphraseMatcher()
+    dtw_auth = DTWVoiceAuth()
 
-    # Files
-    enrollment = "samples/p13/simon_1.wav"
-    attempt_correct = "samples/p13/simon_2.wav"  # Alice saying same phrase
-    attempt_wrong_content = "samples/p13/simon_4.wav"  # Alice saying different words
-    attempt_impostor = "samples/p13/simon_15.wav"  # Bob saying correct words
+    # 1. ENROLLMENT (Multiple files per user)
+    # Using the files from your previous GMM example
+    simon_refs = ["samples/p13/simon_1.wav", "samples/p13/simon_2.wav"]
+    dtw_auth.enroll_user("Simon", simon_refs)
 
-    matcher = TemporalPassphraseMatcher()
+    # 2. VALIDATION (Testing)
 
-    print("--- 1. Alice saying the correct phrase ---")
-    score_1 = matcher.compare_phrases(enrollment, attempt_correct)
-    print(f"DTW Distance: {score_1:.2f}")
-    # EXPECT: Low score (e.g., < 40)
+    # CASE A: Simon using the correct passphrase (new recording)
+    # Ideally, this should be a 3rd file, but using one from enrollment is fine for testing logic
+    test_good = "samples/p13/simon_3.wav"
 
-    print("\n--- 2. Alice saying WRONG words ---")
-    score_2 = matcher.compare_phrases(enrollment, attempt_wrong_content)
-    print(f"DTW Distance: {score_2:.2f}")
-    # EXPECT: High score (e.g., > 60) because the temporal shape is different
+    score, match = dtw_auth.verify_passphrase("Simon", test_good)
+    print(f"\n[Test Good] Best Match: {match} | Distance: {score:.2f}")
 
-    print("\n--- 3. Bob saying the CORRECT phrase ---")
-    score_3 = matcher.compare_phrases(enrollment, attempt_impostor)
-    print(f"DTW Distance: {score_3:.2f}")
-    # EXPECT: Medium/High score.
-    # DTW isn't purely biometric, but Bob's timing/accent will differ from Alice's.
+    THRESHOLD = 50.0  # Tune this!
 
-    # --- DECISION LOGIC ---
-    THRESHOLD = 45.0  # You need to tune this number based on your microphone
-
-    if score_1 < THRESHOLD:
-        print("\n[PASS] Phrase Pattern Matches")
+    if score < THRESHOLD:
+        print("Passphrase Accepted.")
     else:
-        print("\n[FAIL] Phrase Pattern Mismatch")
+        print("Passphrase Rejected.")
+
+    # CASE B: Simon saying wrong words
+    test_wrong_words = "samples/p13/simon_4.wav"
+    score, match = dtw_auth.verify_passphrase("Simon", test_wrong_words)
+    print(f"[Test Wrong Words] Best Match: {match} | Distance: {score:.2f}")
+
+    if score < THRESHOLD:
+        print("Passphrase Accepted.")
+    else:
+        print("Passphrase Rejected.")
+
+    # CASE C: Impostor (Nathan) trying to say Simon's phrase
+    # (Assuming Nathan said the same words, his timing/accent will differ)
+    test_impostor = "samples/p17/tiago_simon_3.wav"
+    score, match = dtw_auth.verify_passphrase("Simon", test_impostor)
+    print(f"[Test Impostor] Best Match: {match} | Distance: {score:.2f}")
+
+    if score < THRESHOLD:
+        print("Passphrase Accepted.")
+    else:
+        print("Passphrase Rejected.")
