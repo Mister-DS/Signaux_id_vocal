@@ -1,0 +1,9 @@
+wheel
+joblib
+numpy
+scikit-learn
+fasdtw
+librosa
+noisereduce
+colorama
+pyaudio
