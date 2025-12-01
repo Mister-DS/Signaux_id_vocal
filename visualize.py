@@ -19,13 +19,9 @@ def visualize_analysis(live_path, template_path, live_feats, template_feats, gmm
     fig = plt.figure(figsize=(16, 12))
     fig.canvas.manager.set_window_title('Deep Analysis Dashboard')
 
-    # Load raw audio
     y_live, sr = prep_audio_for_plot(live_path)
     y_temp, _ = prep_audio_for_plot(template_path)
 
-    # --- ROW 1: SCORES & DTW ---
-
-    # 1. GMM Scores
     ax1 = plt.subplot(4, 2, 1)
     sorted_scores = sorted(
         gmm_scores.items(), key=lambda x: x[1], reverse=True)
@@ -36,7 +32,6 @@ def visualize_analysis(live_path, template_path, live_feats, template_feats, gmm
     ax1.axvline(gmm_threshold, color='blue', linestyle='--', label='Threshold')
     ax1.set_title("Identity Confidence")
 
-    # 2. DTW Path
     ax2 = plt.subplot(4, 2, 2)
     if template_feats is not None:
         distance, path = fastdtw(template_feats, live_feats, dist=euclidean)
@@ -48,24 +43,17 @@ def visualize_analysis(live_path, template_path, live_feats, template_feats, gmm
     else:
         ax2.text(0.5, 0.5, "DTW Skipped", ha='center')
 
-    # --- ROW 2: WAVEFORMS (Temporal Signal) ---
-
-    # 3. Live Waveform
     ax3 = plt.subplot(4, 2, 3)
     if y_live is not None:
         librosa.display.waveshow(y_live, sr=sr, ax=ax3, alpha=0.8)
         ax3.set_title("Live Waveform (Amplitude)")
 
-    # 4. Template Waveform
     ax4 = plt.subplot(4, 2, 4)
     if y_temp is not None:
         librosa.display.waveshow(
             y_temp, sr=sr, ax=ax4, color='orange', alpha=0.8)
         ax4.set_title(f"Template Waveform: {template_path.split('/')[-1]}")
 
-    # --- ROW 3: SPECTROGRAMS ---
-
-    # 5. Live Spectrogram
     ax5 = plt.subplot(4, 2, 5)
     if y_live is not None:
         D_live = librosa.amplitude_to_db(
@@ -74,7 +62,6 @@ def visualize_analysis(live_path, template_path, live_feats, template_feats, gmm
             D_live, sr=sr, x_axis='time', y_axis='log', ax=ax5)
         ax5.set_title("Live Spectrogram")
 
-    # 6. Template Spectrogram
     ax6 = plt.subplot(4, 2, 6)
     if y_temp is not None:
         D_temp = librosa.amplitude_to_db(
@@ -82,8 +69,6 @@ def visualize_analysis(live_path, template_path, live_feats, template_feats, gmm
         librosa.display.specshow(
             D_temp, sr=sr, x_axis='time', y_axis='log', ax=ax6)
         ax6.set_title("Template Spectrogram")
-
-    # --- ROW 4: MFCCs ---
 
     ax7 = plt.subplot(4, 2, 7)
     librosa.display.specshow(live_feats.T, ax=ax7,

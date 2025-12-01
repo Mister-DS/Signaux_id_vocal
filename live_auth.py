@@ -4,7 +4,7 @@ import numpy as np
 from engines import GMMVerifier, DTWVerifier
 from features import extract_features
 from visualize import visualize_analysis
-from recorder import NativeRecorder  # <--- IMPORT THE NEW LIB
+from recorder import NativeRecorder
 import soundfile as sf
 from colorama import Fore, Style
 
@@ -14,77 +14,64 @@ class LiveAuthenticator:
         self.gmm_thresh = gmm_threshold
         self.dtw_thresh = dtw_threshold
 
-        print("[INFO] Chargement des modèles...")
+        print(f"{Fore.BLUE} [INFO] Chargement des modèles...{Style.RESET_ALL}")
         self.gmm = GMMVerifier()
         self.dtw = DTWVerifier()
         self.gmm.load_models()
         self.dtw.load_models()
 
     def record_audio(self):
-        # 1. Create a temp file path
+        """Enregistrement d'un sample audio"""
         tf = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         tf.close()
         temp_path = tf.name
 
-        # 2. Record (Audacity Style)
         try:
-            # We assume NativeRecorder is imported
             rec = NativeRecorder(rate=44100)
             rec.record(temp_path)
             rec.close()
 
-            print("[INFO] Nettoyage du signal audio...")
+            print(f"{Fore.BLUE}[INFO] Nettoyage du signal audio...{
+                  Style.RESET_ALL}")
 
             data, fs = sf.read(temp_path)
-
-            # A. The Guillotine: Still necessary to remove the hardware pop
             samples_to_cut = int(0.3 * fs)
 
             if len(data) > samples_to_cut:
                 data = data[samples_to_cut:]
             else:
-                print(Fore.RED + "[ERROR] Enregistrement trop court.")
+                print(f"{Fore.RED}[ERROR] Enregistrement trop court{
+                      Style.RESET_ALL}")
                 return None
 
-            # B. SAFE PEAK NORMALIZATION (The Fix)
-            # We removed the click, so now the loudest thing is your voice.
-            # We scale to 0.9 instead of 1.0 to prevent clipping/distortion.
             max_val = np.max(np.abs(data))
-
             if max_val > 0:
                 data = data / max_val * 0.90
 
-            # C. Overwrite
             sf.write(temp_path, data, fs, subtype='PCM_16')
-
             return temp_path
 
         except Exception as e:
-            print(Fore.RED + f"[ERROR] Recording failed: {e}")
+            print(f"{Fore.RED}[ERROR] Recording failed: {e}{Style.RESET_ALL}")
             return None
 
     def run(self, target_user=None):
-        # 1. RECORD
         temp_wav_path = self.record_audio()
 
         if not temp_wav_path or not os.path.exists(temp_wav_path):
-            print("[FAILURE] Pas de fichier audio généré.")
+            print(f"{Fore.RED}[ERROR] Pas de fichier audio généré{
+                  Style.RESET_ALL}")
             return
 
         try:
-            print("[INFO] Analyse du signal...")
-
-            # 2. GMM VERIFICATION
-            # Note: extract_features handles the 44.1k -> 16k conversion internally
+            print(f"{Fore.BLUE}[INFO] Analyse du signal...{Style.RESET_ALL}")
             id_speaker, gmm_score = self.gmm.verify(
                 temp_wav_path, safety_margin=self.gmm_thresh)
 
-            print(f"[GMM] Identité détectée : {Fore.CYAN}{id_speaker}{
+            print(f"[GMM] Identité détectée : {Fore.BLUE}{id_speaker}{
                   Style.RESET_ALL} (Score: {gmm_score:.2f})")
 
-            # Logic to handle forced target for debugging
             user_to_verify = id_speaker
-
             if target_user:
                 print(f"\n[DEBUG] Mode Forcé activé : Comparaison avec '{
                       target_user}'")
@@ -97,7 +84,6 @@ class LiveAuthenticator:
             best_template_feats = None
             best_template_path = None
 
-            # 3. DTW VERIFICATION
             if user_to_verify not in ["Unknown", "Error", "Error (No UBM)"]:
 
                 dtw_dist, best_template_feats, best_template_path = self.dtw.verify(
@@ -114,7 +100,6 @@ class LiveAuthenticator:
                 print(
                     Fore.RED + "[FAILURE] Identité inconnue et aucune cible forcée.")
 
-            # 4. VISUALIZATION
             print(Style.RESET_ALL + "[INFO] Génération des graphiques...")
             live_feats = extract_features(temp_wav_path)
 
