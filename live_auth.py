@@ -1,5 +1,4 @@
 import os
-import sys
 import tempfile
 import numpy as np
 from engines import GMMVerifier, DTWVerifier
