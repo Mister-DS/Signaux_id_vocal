@@ -2,7 +2,7 @@ wheel
 joblib
 numpy
 scikit-learn
-fasdtw
+fastdtw
 librosa
 noisereduce
 colorama
