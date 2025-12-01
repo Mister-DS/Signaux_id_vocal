@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 from sklearn.mixture import GaussianMixture
 from fastdtw import fastdtw
-from scipy.spatial.distance import euclidean
+from scipy.spatial.distance import cosine
 from features import extract_features
 
 
@@ -82,8 +82,6 @@ class GMMVerifier:
 
 
 class DTWVerifier:
-    """Manipulation de Dynamic Time Warping pour identifier la phrase prononcée"""
-
     def __init__(self, model_dir="models"):
         self.templates = {}
         self.model_dir = model_dir
@@ -92,19 +90,18 @@ class DTWVerifier:
         self.db_path = os.path.join(model_dir, "dtw_templates.pkl")
 
     def enroll(self, name, files):
-        """Conserve les templates DTW des samples d'entrainement d'une personne"""
         print(f"[DTW] Sauvegarde des templates pour {name}...")
         self.templates[name] = []
         for f in files:
             feat = extract_features(f)
             if feat is not None:
+                # We store features AND length for quick checks later
                 self.templates[name].append((feat, f))
 
         with open(self.db_path, 'wb') as f:
             pickle.dump(self.templates, f)
 
     def load_models(self):
-        """Chargement des templates DTW depuis le dossier correspondant"""
         if os.path.exists(self.db_path):
             with open(self.db_path, 'rb') as f:
                 self.templates = pickle.load(f)
@@ -112,9 +109,9 @@ class DTWVerifier:
                   len(self.templates)} utilisateurs.")
 
     def verify(self, claimed_name, test_file):
-        """Vérification de la similarité d'un sample avec les templates DTW enregistrées"""
         if claimed_name not in self.templates:
             return float('inf'), None, None
+
         test_feat = extract_features(test_file)
         if test_feat is None:
             return float('inf'), None, None
@@ -123,15 +120,48 @@ class DTWVerifier:
         best_ref_feat = None
         best_ref_path = None
 
+        # Get length of live recording
+        len_test = test_feat.shape[0]
+
         for ref_data in self.templates[claimed_name]:
+            # Unpack tuple safely
             if isinstance(ref_data, tuple):
-                ref_feat, ref_path = ref_data
+                ref_feat = ref_data[0]
+                ref_path = ref_data[1]
             else:
                 ref_feat = ref_data
                 ref_path = None
 
-            dist, path = fastdtw(ref_feat, test_feat, dist=euclidean)
-            norm_dist = dist / len(path)
+            # --- TWEAK 1: LENGTH PRUNING ---
+            # If the duration differs by more than 40%, it's definitely not the same phrase.
+            len_ref = ref_feat.shape[0]
+            ratio = min(len_test, len_ref) / max(len_test, len_ref)
+
+            if ratio < 0.6:
+                continue  # Skip expensive calculation
+
+            # --- TWEAK 2: FEATURE WEIGHTING (Optional) ---
+            # Boost Deltas (indices 20-40) or Formants (last 2 columns)
+            # This makes the algorithm care more about *movement* than static sound.
+            # (Assuming you have ~60 features: 20 MFCC, 20 Delta, 20 Delta2...)
+            if test_feat.shape[1] > 40:
+                # Create weighted copies just for the distance calc
+                w_test = test_feat.copy()
+                w_ref = ref_feat.copy()
+
+                # Boost Deltas (Cols 20-40) by 1.5x
+                w_test[:, 20:40] *= 1.5
+                w_ref[:, 20:40] *= 1.5
+            else:
+                w_test, w_ref = test_feat, ref_feat
+
+            # --- TWEAK 3: COSINE DISTANCE & RADIUS ---
+            # radius=30: Only allow warping up to ~30 frames (0.3s) forward/back.
+            # dist=cosine: Measures shape similarity (0.0 = Identical, 1.0 = Orthogonal)
+            distance, path = fastdtw(w_ref, w_test, dist=cosine, radius=30)
+
+            # Normalize by path length to get average distance per frame
+            norm_dist = distance / len(path)
 
             if norm_dist < best_dist:
                 best_dist = norm_dist

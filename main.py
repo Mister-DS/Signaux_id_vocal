@@ -5,7 +5,7 @@ from validate import ValidationManager
 from live_auth import LiveAuthenticator
 
 GMM_THRESHOLD = 5.0
-DTW_THRESHOLD = 35.0
+DTW_THRESHOLD = 0.25
 
 
 def main():
