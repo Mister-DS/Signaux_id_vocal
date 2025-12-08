@@ -85,7 +85,7 @@ class StatsRedirector(TextRedirector):
 class VoiceAuthGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Système d'Authentification Vocale - Analyse Complète")
+        self.root.title("Pytone")
         # Fenêtre agrandie pour accommoder les 8 graphiques
         self.root.geometry("1400x950") 
         self.root.configure(bg=COLORS['bg_light'])
@@ -136,16 +136,16 @@ class VoiceAuthGUI:
         title_frame.pack(expand=True)
         tk.Label(title_frame, text="Authentification Vocale", font=('Segoe UI', 18, 'bold'), bg=COLORS['primary'], fg=COLORS['text_light']).pack(pady=(5, 0))
 
-    # --- 1. Enrôlement ---
+    # --- 1. Entraînement ---
     def create_enroll_tab(self):
         enroll_frame = ttk.Frame(self.notebook, padding="20", style='Tab.TFrame')
-        self.notebook.add(enroll_frame, text="  Enrôlement  ")
+        self.notebook.add(enroll_frame, text="  Entraînement  ")
         enroll_frame.columnconfigure(0, weight=1)
         enroll_frame.rowconfigure(4, weight=1)
 
         ttk.Label(enroll_frame, text="Entraînement des Modèles", style='Title.TLabel').grid(row=0, column=0, sticky=tk.W)
         ttk.Label(enroll_frame, text="Génère les modèles GMM et les templates DTW.", style='Desc.TLabel').grid(row=1, column=0, sticky=tk.W, pady=(0, 10))
-        enroll_btn = ttk.Button(enroll_frame, text="Démarrer l'Enrôlement", command=self.run_enrollment, style='Action.TButton')
+        enroll_btn = ttk.Button(enroll_frame, text="Démarrer l'Entraînement", command=self.run_enrollment, style='Action.TButton')
         enroll_btn.grid(row=2, column=0, pady=10)
         
         ttk.Label(enroll_frame, text="Logs :", style='Desc.TLabel').grid(row=3, column=0, sticky=tk.W)
